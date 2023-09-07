@@ -2,6 +2,7 @@ import pandas as pd
 import json
 import numpy as np
 import gradio as gr
+import random
 import os
 
 import Azure_DALLE2
@@ -16,7 +17,6 @@ csv_file_path = os.path.join(current_dir, 'TTL_train_data.csv')
 # read examples from IIT_train_data.csv
 IIT_train_data = pd.read_csv(csv_file_path)
 example = np.array(IIT_train_data['prompt'])
-print(len(example))
 
 # set delimiter
 delimiter = "####"
@@ -28,6 +28,9 @@ for item in example:
     train_data += delimiter
 
 # global variable
+last_content = ""
+titles = []
+publishes = []
 record = []
 
 
@@ -43,35 +46,184 @@ def btn_3(chat_history):
     return button_function(chat_history, btn=3)
 
 
-def btn_4(chat_history):
-    return button_function(chat_history, btn=4)
+def btn_next(chat_history):
+    global publishes
+    global record
+    global last_content
+
+    publishes.append(last_content)
+    last_content = ""
+
+    if len(publishes) == 7:
+        chat_history.append(("故事结束啦！", "请点击'Publish'按钮发布故事！"))
+    else:
+        format_1 = """
+        {"Brief Introduction" : ["Introduction1", "Introduction2", "Introduction3"]}
+        """
+        prompt = f"请生成Page{len(publishes)}的故事梗概，参考格式{format_1}"
+        record.append({"role": "user", "content": prompt})
+
+        response = Azure_OpenAI_API.get_completion_from_messages(messages=record)
+        record.append({"role": "assistant", "content": response})
+        data = json.loads(response)
+
+        output = f"""
+        请选择第{len(publishes)}页的故事：
+        1. {data["Brief Introduction"][0]}
+        2. {data["Brief Introduction"][1]}
+        3. {data["Brief Introduction"][2]}
+        """
+        chat_history.append((f"下一页！", output))
+
+    return chat_history
 
 
 def btn_refresh(chat_history):
-    return button_function(chat_history, btn=0)
+    global record
+    global last_content
+
+    prompt = f"我对结果不满意，请按照格式重新生成"
+    record.append({"role": "user", "content": prompt})
+
+    response = Azure_OpenAI_API.get_completion_from_messages(messages=record)
+    record.append({"role": "assistant", "content": response})
+    data = json.loads(response)
+
+    if last_content == "":
+        output = f"""
+        请选择第{len(publishes)}页的故事：
+        1. {data["Brief Introduction"][0]}
+        2. {data["Brief Introduction"][1]}
+        3. {data["Brief Introduction"][2]}
+        """
+    else:
+        last_content = data["Story"]
+        output = f"""
+        第{len(publishes)}页：
+        {last_content}
+        """
+
+    chat_history.append(("刷新！", output))
+    return chat_history
 
 
 def btn_start(chat_history):
-    global record
-    chat_history.append(("hi", "hello"))
+    global titles
+    global publishes
+    publishes = []
+
+    system_prompt = """
+    你是一位儿童文学作家，你的读者主要是小学和学龄前儿童。
+    我们正准备创作一个儿童故事，请你提出与输入的关键词有关的3个故事标题。
+    要求：
+    1. 请使用JSON格式组织你的回答。
+    2. 每一个标题不超过10个中文字符
+    """
+
+    input_example = "大海"
+
+    output_example = """
+    {"titles": ["小鱼的冒险", "海底奇遇记", "海洋王国的守护者"]}
+    """
+
+    topic = random.choice(["大海", "农场", "冒险", "动物", "森林"])
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": input_example},
+        {"role": "assistant", "content": output_example},
+        {"role": "user", "content": topic},
+    ]
+
+    response = Azure_OpenAI_API.get_completion_from_messages(messages=messages)
+    data = json.loads(response)
+    titles = [data["titles"][0], data["titles"][1], data["titles"][2]]
+
+    output = f"""
+    请选择你喜欢的主题：
+    1. {data["titles"][0]}
+    2. {data["titles"][1]}
+    3. {data["titles"][2]}
+    """
+
+    chat_history.append(("请为我讲个故事吧！", output))
     return chat_history
 
 
 def btn_publish():
-    global record
+    global publishes
     text = ""
-    for item in record:
-        text += item
-        text += "\n"
+    for i in range(len(publishes)):
+        if i > 0:
+            text += f"第{i}页： "
+        text += publishes[i]
+        if i < 7:
+            text += "\n"
     return text
 
 
-def button_function(chat_history, btn=0):
+def button_function(chat_history, btn=1):
     global record
-    message = str(btn)
-    bot_message = "hello" + message
-    record.append(bot_message)
-    chat_history.append((message, bot_message))
+    global publishes
+
+    format_1 = """
+    {"Brief Introduction" : ["Introduction1", "Introduction2", "Introduction3"]}
+    """
+    format_2 = """
+    {"Story" : "Content"}
+    """
+
+    if len(publishes) == 0:
+        global titles
+        title = titles[btn-1]
+        publishes.append(title)
+
+        system_prompt = f"""
+        你是一位儿童文学作家，你的读者主要是小学和学龄前儿童。
+        你正在和儿童共同创作一个儿童故事，故事的题目是{title}。
+        整个格式将由六页组成，请注意剧情进程的控制以保证故事的完整。
+        在创作过程中，你需要先为每一页提供三个故事梗概，待儿童选择后再进行详细的描写。
+        """
+
+        prompt = f"请生成Page1的故事梗概，参考格式{format_1}"
+
+        record = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        response = Azure_OpenAI_API.get_completion_from_messages(messages=record)
+        record.append({"role": "assistant", "content": response})
+        data = json.loads(response)
+
+        output = f"""
+        请选择第1页的故事：
+        1. {data["Brief Introduction"][0]}
+        2. {data["Brief Introduction"][1]}
+        3. {data["Brief Introduction"][2]}
+        """
+        chat_history.append((f"我选择第{btn}个题目！", output))
+    else:
+        prompt = f"""
+        我选择第{btn}个，请在梗概的基础上补充完成本页的故事细节，请注重场景描写和角色刻画
+        要求：
+        1. 不超过30个中文字符 
+        2. 参考格式{format_2}
+        """
+        record.append({"role": "user", "content": prompt})
+
+        response = Azure_OpenAI_API.get_completion_from_messages(messages=record)
+        record.append({"role": "assistant", "content": response})
+        data = json.loads(response)
+        global last_content
+        last_content = data["Story"]
+
+        output = f"""
+        第{len(publishes)}页：
+        {last_content}
+        """
+        chat_history.append((f"我选择第{btn}个！", output))
+
     return chat_history
 
 
@@ -159,26 +311,25 @@ def generate_function_3(bot_prompt):
 # create interactive interface with gradio
 with (gr.Blocks() as demo):
     gr.Markdown("# Ink Diffusion")
-    with gr.Accordion(label="Function 1", open=True):
-        gr.Markdown("## Ink Diffusion")
+    with gr.Accordion(label="Ink Story", open=True):
+        gr.Markdown("## Ink Diffusion--StoryTeller")
         with gr.Column():
             with gr.Row():
                 with gr.Column(scale=4):
-                    chatbot = gr.Chatbot(label="Function 1",
+                    chatbot = gr.Chatbot(label="Chatbot",
                                          show_label=True,
-                                         height=275)
+                                         height=320)
                 with gr.Column(scale=1):
+                    button_start = gr.Button("Start")
                     button_1 = gr.Button("1")
                     button_2 = gr.Button("2")
                     button_3 = gr.Button("3")
-                    button_4 = gr.Button("4")
                     button_refresh = gr.Button("Refresh")
-            with gr.Row():
-                button_start = gr.Button("Start")
-                button_publish = gr.Button("Publish")
+                    button_next = gr.Button("Next")
             with gr.Column():
-                publish = gr.Textbox(label="Ink Publish", show_copy_button=True)
-                button_clear = gr.ClearButton(components=[chatbot, publish], value="Clear")
+                button_publish = gr.Button("Publish")
+                publish_box = gr.Textbox(label="Ink Publish", show_copy_button=True)
+                button_clear = gr.ClearButton(components=[chatbot, publish_box], value="Clear")
 
     with gr.Accordion(label="ToolBox", open=False):
         gr.Markdown("## Ink Diffusion--ToolBox")
@@ -197,10 +348,10 @@ with (gr.Blocks() as demo):
     button_1.click(fn=btn_1, inputs=[chatbot], outputs=[chatbot])
     button_2.click(fn=btn_2, inputs=[chatbot], outputs=[chatbot])
     button_3.click(fn=btn_3, inputs=[chatbot], outputs=[chatbot])
-    button_4.click(fn=btn_4, inputs=[chatbot], outputs=[chatbot])
+    button_next.click(fn=btn_next, inputs=[chatbot], outputs=[chatbot])
     button_refresh.click(fn=btn_refresh, inputs=[chatbot], outputs=[chatbot])
     button_start.click(fn=btn_start, inputs=[chatbot], outputs=[chatbot])
-    button_publish.click(fn=btn_publish, inputs=[], outputs=[publish])
+    button_publish.click(fn=btn_publish, inputs=[], outputs=[publish_box])
     button_generate_1.click(fn=generate_function_1,
                             inputs=[user_input, level, tmp],
                             outputs=[bot_output])
