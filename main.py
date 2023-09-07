@@ -123,8 +123,18 @@ def generate_function_1(user_input, level, tmp):
 
 
 def generate_function_2(bot_output):
+    if bot_output == '':
+        return "Please enter the content."
+
     system_prompt = f"""
-    
+    You are a Text-To-Image prompt generator.
+    Your task is to read the content of sense I give and generator prompts that can be used in DALL-E to generator images.
+    You can add some descriptions in the content to make it more vivid, but do not change the meaning of the content.
+    Given the example prompts delimited by {delimiter}:
+    <examples>
+    {train_data}
+    </examples>
+    Please return in English and format your response as a JSON object with "Prompt" as the key.
     """
 
     messages = [
