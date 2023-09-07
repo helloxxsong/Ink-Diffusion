@@ -16,6 +16,7 @@ csv_file_path = os.path.join(current_dir, 'TTL_train_data.csv')
 # read examples from IIT_train_data.csv
 IIT_train_data = pd.read_csv(csv_file_path)
 example = np.array(IIT_train_data['prompt'])
+print(len(example))
 
 # set delimiter
 delimiter = "####"
@@ -76,7 +77,7 @@ def button_function(chat_history, btn=0):
 
 def generate_function_1(user_input, level, tmp):
     if user_input == '':
-        return "", "Please enter the content."
+        return "Please enter the content."
 
     system_prompt = f"""
     你是一个儿童文学作家，致力于帮助儿童去创作图画书。
@@ -117,9 +118,9 @@ def generate_function_1(user_input, level, tmp):
     try:
         response = Azure_OpenAI_API.get_completion_from_messages(messages=messages, temperature=float(tmp))
         data = json.loads(response)
-        return "", data[f"Level{int(level)}"]
+        return data[f"Level{int(level)}"]
     except Exception as e:
-        return user_input, e
+        return e
 
 
 def generate_function_2(bot_output):
@@ -128,12 +129,13 @@ def generate_function_2(bot_output):
 
     system_prompt = f"""
     You are a Text-To-Image prompt generator.
-    Your task is to read the content of sense I give and generator prompts that can be used in DALL-E to generator images.
+    Your task is to read the content of scene I give and generator prompts that can be used in DALL-E to generator images for children's picture book.
     You can add some descriptions in the content to make it more vivid, but do not change the meaning of the content.
-    Given the example prompts delimited by {delimiter}:
+    Given the example prompts delimited by {delimiter}：
     <examples>
     {train_data}
     </examples>
+    You can imitate the styles of examples.
     Please return in English and format your response as a JSON object with "Prompt" as the key.
     """
 
@@ -144,17 +146,14 @@ def generate_function_2(bot_output):
 
     try:
         response = Azure_OpenAI_API.get_completion_from_messages(messages=messages)
-        return response
+        data = json.loads(response)
+        return data["Prompt"]
     except Exception as e:
         return e
 
 
 def generate_function_3(bot_prompt):
-    try:
-        response = Azure_DALLE2.get_image(prompt=bot_prompt)
-        return response
-    except Exception:
-        return ""
+    return Azure_DALLE2.get_image(prompt=bot_prompt)
 
 
 # create interactive interface with gradio
@@ -181,18 +180,18 @@ with (gr.Blocks() as demo):
                 publish = gr.Textbox(label="Ink Publish", show_copy_button=True)
                 button_clear = gr.ClearButton(components=[chatbot, publish], value="Clear")
 
-    with gr.Accordion(label="Function 2", open=False):
-        gr.Markdown("## Ink Diffusion")
+    with gr.Accordion(label="ToolBox", open=False):
+        gr.Markdown("## Ink Diffusion--ToolBox")
         with gr.Column():
             user_input = gr.Textbox(label="Input")
             with gr.Row():
-                level = gr.Slider(label="Level", maximum=10, minimum=1, step=1, value=5)
-                tmp = gr.Slider(label="Temperature", maximum=2.0, minimum=0.0, step=0.1, value=1.0)
-            button_generate_1 = gr.Button("Generate")
+                level = gr.Slider(label="Level", maximum=9, minimum=1, step=1, value=5)
+                tmp = gr.Slider(label="Temperature", maximum=1.0, minimum=0.0, step=0.1, value=1.0)
+            button_generate_1 = gr.Button("GPT Assistant")
             bot_output = gr.Textbox(label="Output", show_copy_button=True)
-            button_generate_2 = gr.Button("Generate")
-            bot_prompt = gr.Textbox(label="Output", show_copy_button=True)
-            button_generate_3 = gr.Button("Generate")
+            button_generate_2 = gr.Button("Generate Prompt")
+            bot_prompt = gr.Textbox(label="Prompt", show_copy_button=True)
+            button_generate_3 = gr.Button("Generate Image")
             image_output = gr.Image(label="Result")
 
     button_1.click(fn=btn_1, inputs=[chatbot], outputs=[chatbot])
@@ -204,7 +203,7 @@ with (gr.Blocks() as demo):
     button_publish.click(fn=btn_publish, inputs=[], outputs=[publish])
     button_generate_1.click(fn=generate_function_1,
                             inputs=[user_input, level, tmp],
-                            outputs=[user_input, bot_output])
+                            outputs=[bot_output])
     button_generate_2.click(fn=generate_function_2,
                             inputs=[bot_output],
                             outputs=[bot_prompt])
