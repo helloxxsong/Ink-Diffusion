@@ -22,3 +22,15 @@
 
 ## 界面展示
 
+<div align="center">
+<img src="https://s2.loli.net/2023/09/08/cPjfeGuAQSOEt3x.png" />
+<img src="https://s2.loli.net/2023/09/08/P2vLN8I5EtoeUcw.png" />
+<img src="https://s2.loli.net/2023/09/08/kqfenGK4T9LcZy6.png" />
+<img src="https://s2.loli.net/2023/09/08/PzFwHxkieLmolh6.png" />
+</div>
+
+## 未来展望
+
+* 使用国产大模型替代当前使用的**gpt-35-turbo-16k**
+* 对文生图部分的模型调用从提示词升级为微调模型
+* 整合gradio的audio和video组件，完成视频发布功能
